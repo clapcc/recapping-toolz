@@ -1,1 +1,157 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recapping Toolz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Myanmar:wght@400;700;900&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+<style>
+  :root{--sun:#FFD21F;--ink:#15131A;--paper:#FFFBEA;--red:#E8372C}
+  *{box-sizing:border-box;margin:0}
+  body{min-height:100vh;background:var(--sun);color:var(--ink);font:400 17px/1.7 "Noto Sans Myanmar",system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;padding:28px 16px 48px}
+  main{width:100%;max-width:560px}
+  h1{font:700 clamp(36px,9vw,52px)/1 "Space Grotesk",sans-serif;letter-spacing:-.03em;margin-top:8px}
+  .tag{margin:12px 0 28px;font-weight:700}
+  .slab{background:var(--paper);border:3px solid var(--ink);border-radius:14px;box-shadow:7px 7px 0 var(--ink);padding:22px}
+  .drop{display:block;border:3px dashed var(--ink);border-radius:10px;padding:34px 16px;text-align:center;font-weight:700;cursor:pointer}
+  .drop:hover,.drop.over,.drop:focus-within{background:var(--sun)}
+  .drop small{display:block;font-weight:400;margin-top:4px}
+  input[type=file]{position:absolute;opacity:0;width:1px;height:1px}
+  .row{display:flex;gap:10px;margin-top:16px}
+  .opt{flex:1}
+  .opt input{position:absolute;opacity:0}
+  .opt span{display:block;text-align:center;border:3px solid var(--ink);border-radius:10px;padding:6px;font-weight:700;cursor:pointer}
+  .opt input:checked+span{background:var(--ink);color:var(--sun)}
+  .opt input:focus-visible+span{outline:3px solid var(--red);outline-offset:2px}
+  button,.btn{display:block;width:100%;margin-top:16px;padding:12px;text-align:center;text-decoration:none;font:900 18px "Noto Sans Myanmar",sans-serif;color:var(--sun);background:var(--ink);border:3px solid var(--ink);border-radius:10px;cursor:pointer}
+  button:hover,.btn:hover{transform:translate(-2px,-2px);box-shadow:4px 4px 0 var(--red)}
+  button:focus-visible,.btn:focus-visible{outline:3px solid var(--red);outline-offset:2px}
+  button:disabled{opacity:.35;cursor:not-allowed;transform:none;box-shadow:none}
+  .btn.alt{background:var(--paper);color:var(--ink)}
+  .bar{height:22px;border:3px solid var(--ink);border-radius:99px;overflow:hidden;margin:14px 0 10px;background:var(--paper)}
+  .bar i{display:block;height:100%;width:0;background:var(--ink);transition:width .6s}
+  .msg{font-weight:700}
+  .err{color:var(--red)}
+  video{width:100%;border:3px solid var(--ink);border-radius:10px;background:#000;max-height:60vh}
+  .two{display:flex;gap:10px}.two .btn{margin-top:12px;font-size:16px}
+  [hidden]{display:none}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Recapping Toolz</h1>
+  <p class="tag">ဗီဒီယိုတင်ပါ။ မြန်မာအသံနဲ့ စာတန်း ပါလာပါမယ်။</p>
+
+  <section class="slab" id="start">
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept="video/*">
+      <span id="fname">ဗီဒီယိုရွေးပါ</span>
+      <small>MP4, MOV, MKV, WEBM</small>
+    </label>
+    <div class="row" role="radiogroup" aria-label="အသံ">
+      <label class="opt"><input type="radio" name="v" value="my-MM-ThihaNeural" checked><span>အမျိုးသား</span></label>
+      <label class="opt"><input type="radio" name="v" value="my-MM-NilarNeural"><span>အမျိုးသမီး</span></label>
+    </div>
+    <button id="go" disabled>စတင်မယ်</button>
+  </section>
+
+  <section class="slab" id="work" hidden>
+    <p class="msg" id="stage">တင်နေသည်…</p>
+    <div class="bar"><i id="fill"></i></div>
+    <p class="msg err" id="err" hidden></p>
+    <button id="retry" hidden>ပြန်စမယ်</button>
+  </section>
+
+  <section class="slab" id="done" hidden>
+    <video id="vid" controls playsinline></video>
+    <div class="two">
+      <a class="btn" id="dl" download="recap.mp4">ဗီဒီယို သိမ်းမယ်</a>
+      <a class="btn alt" id="srt" download="recap.srt">စာတန်း (.srt)</a>
+    </div>
+    <button id="again">ဗီဒီယိုအသစ်</button>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const STAGES = {
+  queued: "တန်းစီစောင့်နေသည်…",
+  listen: "အသံကို နားထောင်နေသည်…",
+  translate: "မြန်မာလို ဘာသာပြန်နေသည်…",
+  voice: "မြန်မာအသံ ထုတ်နေသည်…",
+  render: "ဗီဒီယို ပေါင်းနေသည်…"
+};
+let file = null, timer = null;
+
+function show(id){ ["start","work","done"].forEach(s => $(s).hidden = s !== id); }
+function pick(f){
+  if(!f) return;
+  file = f; $("fname").textContent = f.name; $("go").disabled = false;
+}
+$("file").onchange = e => pick(e.target.files[0]);
+const drop = $("drop");
+["dragover","dragenter"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave","drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => pick(e.dataTransfer.files[0]));
+
+function fail(text){
+  clearInterval(timer);
+  $("err").textContent = text; $("err").hidden = false; $("retry").hidden = false;
+  $("stage").textContent = "မအောင်မြင်ပါ";
+}
+
+$("go").onclick = () => {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("voice", document.querySelector("input[name=v]:checked").value);
+  show("work"); $("err").hidden = true; $("retry").hidden = true;
+  $("stage").textContent = "တင်နေသည်… 0%"; $("fill").style.width = "0";
+
+  const x = new XMLHttpRequest();
+  x.open("POST", "/api/upload");
+  x.upload.onprogress = e => {
+    if(!e.lengthComputable) return;
+    const p = Math.round(e.loaded / e.total * 100);
+    $("stage").textContent = "တင်နေသည်… " + p + "%";
+    $("fill").style.width = (p * 0.05) + "%";
+  };
+  x.onerror = () => fail("ချိတ်ဆက်မရပါ။ ပြန်စမ်းပါ။");
+  x.onload = () => {
+    let r = {}; try { r = JSON.parse(x.responseText); } catch(e){}
+    if(x.status !== 200) return fail(r.detail || "တင်မရပါ။");
+    poll(r.id);
+  };
+  x.send(fd);
+};
+
+function poll(id){
+  timer = setInterval(async () => {
+    try{
+      const j = await (await fetch("/api/job/" + id)).json();
+      if(j.status === "error") return fail(j.error || "မအောင်မြင်ပါ");
+      if(j.status === "done"){
+        clearInterval(timer);
+        $("vid").src = "/api/file/" + id + "/out.mp4";
+        $("dl").href = "/api/file/" + id + "/out.mp4";
+        $("srt").href = "/api/file/" + id + "/subs.srt";
+        return show("done");
+      }
+      $("stage").textContent = STAGES[j.stage] || STAGES.queued;
+      $("fill").style.width = Math.max(5, j.p) + "%";
+    }catch(e){}
+  }, 1500);
+}
+
+function reset(){
+  clearInterval(timer); file = null; $("file").value = "";
+  $("fname").textContent = "ဗီဒီယိုရွေးပါ"; $("go").disabled = true;
+  $("vid").removeAttribute("src"); show("start");
+}
+$("retry").onclick = reset;
+$("again").onclick = reset;
+</script>
+</body>
+</html>
 
